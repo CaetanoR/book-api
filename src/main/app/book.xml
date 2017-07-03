@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/apikit" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:spring="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/apikit http://www.mulesoft.org/schema/mule/apikit/current/mule-apikit.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-3.1.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">
+    <http:listener-config name="book-httpListenerConfig" host="0.0.0.0" port="8081" doc:name="HTTP Listener Configuration"/>
+    <apikit:config name="book-config" raml="book.raml" consoleEnabled="false" doc:name="Router" keepRamlBaseUri="false">
+        <apikit:flow-mapping resource="/books" action="get" flow-ref="get:/books:book-config"/>
+        <apikit:flow-mapping resource="/books/{bookName}" action="get" flow-ref="get:/books/{bookName}:book-config"/>
+        <apikit:flow-mapping resource="/book" action="post" content-type="application/json" flow-ref="post:/book:book-config"/>
+        <apikit:flow-mapping resource="/book/{bookId}" action="put" content-type="application/json" flow-ref="put:/book/{bookId}:book-config"/>
+        <apikit:flow-mapping resource="/book/{bookId}" action="delete" flow-ref="delete:/book/{bookId}:book-config"/>
+    </apikit:config>
+    <spring:beans>
+        <spring:bean id="books" name="books" class="java.util.HashMap" scope="singleton"/>
+        <spring:bean id="bookId" name="bookId" class="java.util.concurrent.atomic.AtomicInteger" scope="singleton"/>
+    </spring:beans>
+    <flow name="book-main">
+        <http:listener config-ref="book-httpListenerConfig" path="/api/*" doc:name="HTTP"/>
+        <apikit:router config-ref="book-config" doc:name="APIkit Router"/>
+        <exception-strategy ref="book-apiKitGlobalExceptionMapping" doc:name="Reference Exception Strategy"/>
+    </flow>
+    <flow name="book-console">
+        <http:listener config-ref="book-httpListenerConfig" path="/console/*" doc:name="HTTP"/>
+        <apikit:console config-ref="book-config" doc:name="APIkit Console"/>
+    </flow>
+    <flow name="put:/book/{bookId}:book-config">
+        <dw:transform-message doc:name="Original Payload">
+            <dw:set-variable variableName="originalPayload"><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-variable>
+        </dw:transform-message>
+        <message-filter throwOnUnaccepted="true" doc:name="Fail if book does not exist">
+            <expression-filter expression="#[app.registry['books'].containsKey(Integer.valueOf(bookId))]"/>
+        </message-filter>
+        <set-payload value="#[app.registry['books'].get(Integer.valueOf(bookId))]" doc:name="Existing book"/>
+        <expression-component doc:name="Update book details"><![CDATA[#[app.registry['books'].replace(Integer.valueOf(bookId), payload)]]]></expression-component>
+        <set-payload value="#[app.registry['books'].get(Integer.valueOf(bookId))]" doc:name="Return updated book"/>
+        <dw:transform-message doc:name="Transform to JSON">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+    </flow>
+    <flow name="delete:/book/{bookId}:book-config">
+        <message-filter throwOnUnaccepted="true" doc:name="Fail if book does not exist">
+            <expression-filter expression="#[app.registry['books'].containsKey(Integer.valueOf(bookId))]"/>
+        </message-filter>
+        <expression-component doc:name="Remove book"><![CDATA[#[app.registry['books'].remove(Integer.valueOf(bookId))]]]></expression-component>
+        <set-payload value="#[NullPayload.getInstance()]" doc:name="Set Payload"/>
+    </flow>
+    <flow name="get:/books:book-config">
+        <set-payload value="#[app.registry['books'].values()]" mimeType="application/java" doc:name="Get books"/>
+        <dw:transform-message doc:name="Map to JSON">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+%var pagesFilter = inboundProperties."http.query.params".pages as :number when inboundProperties."http.query.params".pages? otherwise null
+%var authorFilter = inboundProperties."http.query.params".author
+%var applyPagesFilter = payload filter $.pages == pagesFilter
+%var applyAuthorFilter = payload filter $.author == authorFilter
+---
+applyPagesFilter reduce $ when pagesFilter != null and (sizeOf applyPagesFilter) == 1
+
+otherwise applyPagesFilter when pagesFilter != null 
+
+otherwise applyAuthorFilter reduce $ when authorFilter != null and (sizeOf applyAuthorFilter) == 1
+
+otherwise applyAuthorFilter when authorFilter != null 
+
+otherwise payload]]></dw:set-payload>
+        </dw:transform-message>
+    </flow>
+    <flow name="get:/books/{bookName}:book-config">
+        <set-variable variableName="bookName" value="#[bookName]" doc:name="BookName"/>
+        <set-payload value="#[app.registry['books'].values()]" doc:name="Get all books"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+(payload filter $.title == flowVars.bookName)[0]]]></dw:set-payload>
+            <dw:set-variable variableName="exists"><![CDATA[%dw 1.0
+%output application/java
+---
+(payload filter $.title == flowVars.bookName)[0].title?]]></dw:set-variable>
+        </dw:transform-message>
+        <message-filter throwOnUnaccepted="true" doc:name="Fail if book does not exist">
+            <expression-filter expression="#[flowVars.exists == true]"/>
+        </message-filter>
+    </flow>
+    <flow name="post:/book:book-config">
+        <dw:transform-message doc:name="Original Payload">
+            <dw:set-variable variableName="originalPayload"><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-variable>
+        </dw:transform-message>
+        <set-payload value="#[app.registry['books'].values()]" doc:name="Get all books"/>
+        <dw:transform-message doc:name="Filter payload by title">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload filter $.title == flowVars.originalPayload.title]]></dw:set-payload>
+        </dw:transform-message>
+        <message-filter throwOnUnaccepted="true" doc:name="Fail if book exists" >
+            <expression-filter expression="#[payload.isEmpty()]"/>
+        </message-filter>
+        <set-variable variableName="bookId" value="#[app.registry.'bookId'.incrementAndGet()]" doc:name="Lookup next book id"/>
+        <dw:transform-message doc:name="Create book">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+(flowVars.originalPayload ++ {id: flowVars.bookId}) as :object {class: "com.book.api.Book"}]]></dw:set-payload>
+        </dw:transform-message>
+        <expression-component doc:name="Add book to book list"><![CDATA[#[app.registry['books'].put(bookId, payload)]]]></expression-component>
+        <set-payload value="#[app.registry['books'].get(flowVars.bookId)]" doc:name="Get book with generated ID"/>
+        <dw:transform-message doc:name="Transform to JSON">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+    </flow>
+    <apikit:mapping-exception-strategy name="book-apiKitGlobalExceptionMapping">
+        <apikit:mapping statusCode="404">
+            <apikit:exception value="org.mule.module.apikit.exception.NotFoundException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Resource not found&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="405">
+            <apikit:exception value="org.mule.module.apikit.exception.MethodNotAllowedException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Method not allowed&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="415">
+            <apikit:exception value="org.mule.module.apikit.exception.UnsupportedMediaTypeException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Unsupported media type&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="406">
+            <apikit:exception value="org.mule.module.apikit.exception.NotAcceptableException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Not acceptable&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="400">
+            <apikit:exception value="org.mule.module.apikit.exception.BadRequestException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Bad request&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="500">
+            <apikit:exception value="org.mule.api.routing.filter.FilterUnacceptedException"/>
+            <set-payload value="#[exception.info['Element']]" doc:name="Get exception information"/>
+            <dw:transform-message doc:name="Set exception reason">
+                <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+%var failIfExists = payload contains "Fail if book exists"
+---
+"The book already exists" when failIfExists == true otherwise "Unable to find a book with that name/id"]]></dw:set-payload>
+            </dw:transform-message>
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;#[payload]&quot;}" doc:name="Set Payload"/>
+        </apikit:mapping>
+    </apikit:mapping-exception-strategy>
+</mule>

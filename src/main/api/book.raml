@@ -1,0 +1,149 @@
+#%RAML 0.8
+---
+title: Book API
+version: 1.0
+baseUri: http://localhost:8080/api
+documentation:
+  - title: About
+    content: |
+      The Book API allows you to create new books, get books by name, and retrieve/filter books from the book list.
+/books:
+  displayName: Books
+  #description: |
+  #  A collection of books that have been created. Books API allows you to retrieve and filter books from the book list.
+  get:
+    description: Obtain information from a collection of teams simultaneously
+    headers:
+      user:
+        description: |
+          The name of the user making the request
+        type: string
+        required: true
+        example: Caetano
+    queryParameters:
+      author:
+        description: |
+          Filter the list of books by author.
+        type: string
+        required: false
+        example: George R. R. Martin
+      pages:
+        description: |
+          Filter the list of books by number of pages.
+        type: integer
+        required: false
+        example: 800
+    responses:
+      200:
+        body:
+          application/json:
+            schema: !include schemas/books-schema-output.json         
+            example: !include examples/books-get-response-example.json    
+      404:
+        description: |
+          No books match the current filter
+  /{bookName}:
+    displayName: Get Book By Name
+    #description: |
+    #  You can get books by name.
+    uriParameters:
+      bookName:
+        description: |
+          The name of the book.
+        type: string
+        example: A Dance with Dragons
+    get:
+      description: Retrieve book-related information such as the title and the number of pages.
+      headers:
+        user:
+          description: |
+            The name of the user making the request
+          type: string
+          required: true
+          example: Caetano
+      responses:
+        200:
+          body:
+            application/json:
+              example: !include examples/book-response-example.json
+              schema: !include schemas/book-schema-output.json
+        404:
+          description: |
+            Unable to find a book with that name
+/book:
+  displayName: Book
+  #description: |
+  #  A book. Book API allows you to create new books
+  post:
+    description: Create a new book
+    headers:
+      user:
+        description: |
+          The name of the user making the request
+        type: string
+        required: true
+        example: Caetano
+    body:
+      application/json:
+        schema: !include schemas/book-post-schema-input.json
+        example: !include examples/book-post-example.json
+    responses:
+      200:
+        body:
+          application/json:
+            schema: !include schemas/book-schema-output.json
+            example: !include examples/book-response-example.json
+      500:
+        description: |
+          The book already exists
+  /{bookId}:
+    displayName: Book
+    #description: |
+    #  You can update or delete existing books.
+    uriParameters:
+      bookId:
+        description: |
+          A unique number that identifies the book.
+        type: integer
+        example: 1
+    put:
+      description: Update book details such as the name of the title, author or the number of pages.
+      headers:
+        user:
+         description: |
+           The name of the user making the request
+         type: string
+         required: true
+         example: Caetano
+      body:
+        application/json:
+          example: !include examples/book-put-example.json
+          schema: !include schemas/book-put-schema-input.json
+
+      responses:
+        200:
+          description: |
+            The book has been succesfully updated
+          body:
+            application/json:
+              example: !include examples/book-response-example.json
+              schema: !include schemas/book-schema-output.json
+        404:
+          description: |
+            Unable to find a book with that identifier
+    delete:
+      description: Remove a book from the list of books. Notice that this operation is non-reversible and all data associated with the book. Use with caution.
+      headers:
+        user:
+         description: |
+           The name of the user making the request
+         type: string
+         required: true
+         example: Caetano
+      responses:
+        204:
+          description: |
+            The resource has been succesfully removed.
+        404:
+          description: |
+            Unable to find a book with that identifier

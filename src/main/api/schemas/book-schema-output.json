@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "properties": {
+    "author": {
+      "description": "Name of the author of the book",
+      "type": "string"
+    },
+    "id": {
+      "description": "A unique number that identifies the book",
+      "type": "integer"
+    },
+    "pages": {
+      "description": "The number of pages of the book",
+      "type": "integer"
+    },
+    "title": {
+      "description": "The book's title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "author",
+    "id",
+    "pages",
+    "title"
+  ],
+  "name": "book",
+  "type": "object"
+}
